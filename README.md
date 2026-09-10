@@ -1,93 +1,53 @@
-# composer-text-plugin
+# composer-text-plugin — ハッシュタグ候補(サンプル)
 
+スロット **`composer.text`**(CONTRACT.md §2.3)。コンポーザー本文で `#` を打つと、
+**最近使ったタグ**(`storage.safe` の `recent`)+ **組み込み辞書** から前方一致の候補(最大 8 件)を
+FOW に出し、タップで本文の `#トークン` を `#タグ ` に置き換える。
 
-
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## call / ホスト関数の流れ
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/orgate-question/plugin-sample/composer-text-plugin.git
-git branch -M main
-git push -uf origin main
+ホスト → plugin.manifest                       ← {id:"sample.composer-text", slots:["composer.text"], permissions:["fow.widget","storage.safe"]}
+ホスト → text.changed {token, text, selectionStart, selectionEnd, trigger?}
+            trigger が無ければ自分で判定: selectionStart から [^\s#@] を遡り、その直前が `#` なら
+            `#<run>` がトリガー(範囲は UTF-16 code unit = Dart の String オフセット)
+            トリガーあり → storage.get recent → fow.open {id:"hashtag-suggest", spec:{title:"ハッシュタグ候補", initialHeightFactor:0.35, attachTop:false}, onClosed:"suggestClosed", root:[ListTile × 候補]}
+            トリガー無し → (開いていれば) fow.close
+                                                   ← {}
+FOW の ListTile → pick.<i>
+            → composer.text.replace {token, start, end, text:"#<tag> "}
+            → storage.set recent(先頭に追加、重複除去、最大 20)
+            → fow.close → toast "#<tag> を挿入しました"       ← {}
+ホスト → suggestClosed(ユーザーが ✕ で閉じた)/ lifecycle   ← {}(状態を捨てる)
 ```
 
-## Integrate with your tools
+- 同じ `id` で `fow.open` し直すので、入力が進むたびに中身が差し替わる。
+- `trigger` をホストが渡す場合は `"#タグ"`(文字列)か `{text, start, end}` を受ける。`@` / `:` で始まるものは対象外。
+- 候補が 0 件でも `#` トークンがある間は FOW を出す(「候補はありません」)。
 
-* [Set up project integrations](https://gitlab.com/orgate-question/plugin-sample/composer-text-plugin/-/settings/integrations)
+## ビルド / テスト
 
-## Collaborate with your team
+```sh
+cargo test -p composer-text-plugin
+cargo build --release --target wasm32-unknown-unknown -p composer-text-plugin
+#  → target/wasm32-unknown-unknown/release/composer_text_plugin.wasm
+```
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+native テストはトリガー抽出(ASCII / 日本語 / `#` の前にサロゲートペアの絵文字がある場合の UTF-16 オフセット)、
+前方一致フィルタ、`text.changed` → `fow.open` → `pick.0` → `composer.text.replace` + `storage.set` + `fow.close` の
+一連の流れ、トリガーが消えたときの `fow.close` を検証している。
 
-## Test and Deploy
+## 端末で試す(rasq-client)
 
-Use the built-in continuous integration in GitLab.
+1. サイドバー → **WASMプラグイン試験 (dev)** → `.wasm のパスからインポート` に `composer_text_plugin.wasm` の絶対パス → **読み込み**
+2. **スロットに登録**(権限 `fow.widget` / `storage.safe` を許可)
+3. コンポーザーを開いて本文に `#` を打つ(例: `#打`)→ 200ms 後に候補 FOW が出る
+4. 候補をタップ → 本文の `#打` が `#打上会 ` に置き換わり、トーストが出る。次に `#` を打つとそのタグが先頭に出る
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+---
 
-***
+## このリポジトリの形
 
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- クレートはルート(`src/`)、共通部品 [`rasq-plugin-kit`](kit) は `kit/` に同梱(開発用モノレポから写している)。
+- 契約は [`CONTRACT.md`](CONTRACT.md)(スロットプラグイン契約 v0.1)。
+- ビルド済み `.wasm` は [`dist/`](dist)。`cargo build --release --target wasm32-unknown-unknown` で更新。

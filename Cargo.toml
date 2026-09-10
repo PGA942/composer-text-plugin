@@ -1,0 +1,23 @@
+[package]
+name = "composer-text-plugin"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "コンポーザーで # を打つと出るハッシュタグ候補 FOW(最近使ったタグ + 辞書)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rasq-plugin-kit = { path = "kit" }
+serde_json = "1"
+
+[workspace]
+members = ["kit"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
