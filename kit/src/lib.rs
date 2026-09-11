@@ -336,6 +336,18 @@ pub mod rrl {
         node["p"]["top"] = json!(top);
         node
     }
+    /// `on: {<event>: <fn>}` を足す(`drag` / `tap` / `longPress` …)。
+    pub fn with_on(mut node: Value, event: &str, fn_name: &str) -> Value {
+        if node["on"].is_null() {
+            node["on"] = json!({});
+        }
+        node["on"][event] = json!(fn_name);
+        node
+    }
+    /// 幅・高さ付きの `Stack`(メディアエディターの重ねのルート)。
+    pub fn sized_stack(key: &str, width: f64, height: f64, children: Vec<Value>) -> Value {
+        node("Stack", key, json!({"width": width, "height": height}), children)
+    }
     pub fn with_tag(mut node: Value, tag: &str) -> Value {
         node["tag"] = json!(tag);
         node
@@ -411,6 +423,19 @@ pub mod host {
             a["name"] = json!(n);
         }
         host_call("composer.open", a)
+    }
+    /// `composer.media.preview`(v0.5: `width` / `height` = プレビュー画素数、重ねの座標系)。
+    pub fn composer_media_preview(token: &str, bytes_b64: &str, mime: &str, size: Option<(u32, u32)>) -> Value {
+        let mut a = json!({"token": token, "bytesB64": bytes_b64, "mimeType": mime});
+        if let Some((w, h)) = size {
+            a["width"] = json!(w);
+            a["height"] = json!(h);
+        }
+        host_call("composer.media.preview", a)
+    }
+    /// `composer.media.overlay`(v0.5): プレビューの上に重ねる RRL(`root` = `Stack`、`Value::Null` で消す)。
+    pub fn composer_media_overlay(token: &str, root: Value) -> Value {
+        host_call("composer.media.overlay", json!({"token": token, "root": root}))
     }
     pub fn composer_text_replace(token: &str, start: usize, end: usize, text: &str) -> Value {
         host_call("composer.text.replace", json!({"token": token, "start": start, "end": end, "text": text}))
