@@ -397,6 +397,21 @@ pub mod host {
         }
         host_call("composer.media.replace", a)
     }
+    /// `composer.open {token, text, mediaB64?, mimeType?, name?}`(CONTRACT.md §2.8): 選んだアカウントのコンポーザーを
+    /// `text` を初期入力して開く。画像を添えるなら `media_b64` + `mime`(+ `name`)。
+    pub fn composer_open(token: &str, text: &str, media_b64: Option<&str>, mime: Option<&str>, name: Option<&str>) -> Value {
+        let mut a = json!({"token": token, "text": text});
+        if let Some(b) = media_b64 {
+            a["mediaB64"] = json!(b);
+        }
+        if let Some(m) = mime {
+            a["mimeType"] = json!(m);
+        }
+        if let Some(n) = name {
+            a["name"] = json!(n);
+        }
+        host_call("composer.open", a)
+    }
     pub fn composer_text_replace(token: &str, start: usize, end: usize, text: &str) -> Value {
         host_call("composer.text.replace", json!({"token": token, "start": start, "end": end, "text": text}))
     }
