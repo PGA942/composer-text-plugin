@@ -1,0 +1,10 @@
+schema = "rasq.workspace/1"
+sdk = "0.1.0"
+
+[author]
+namespace = "sample"
+
+[[plugins]]
+name = "composer-text-plugin"
+slot = "composer.text"
+id = "sample.composer-text"

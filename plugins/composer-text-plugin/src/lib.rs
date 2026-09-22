@@ -9,14 +9,14 @@
 //! | 候補をタップ | `pick.<i>` → `composer.text.replace {token, start, end, text}` + `storage.safe: recent` 更新 + `fow.close` + `toast` |
 //! | トリガー無し | 開いていれば `fow.close` |
 //!
-//! ビルド: `cargo build --release --target wasm32-unknown-unknown -p composer-text-plugin`
-//! 契約: `../CONTRACT.md` §2.3 / §4。
+//! ビルド: `rasq check` / `rasq build --raw`(実 wasm を叩くなら `rasq call composer-text-plugin …`)。
+//! 契約: v0.13(`rasq-sdk-sample/docs/slots.md` §2.3 / §4、[`../../CONTRACT.md`](../../CONTRACT.md))。
+//!
+//! `plugin.manifest` の答えは同じディレクトリの `manifest.json` そのもの(`include_str!`。
+//! `rasq check` の往復検査が常に一致する)。
 
-use rasq_plugin_kit::{fow_spec, host, manifest, rasq_plugin, rrl, serde_json::{json, Value}, unsupported, Surface};
+use rasq_plugin_kit::{fow_spec, host, rasq_plugin, rrl, serde_json::{json, Value}, unsupported, Surface};
 use std::sync::Mutex;
-
-const PLUGIN_ID: &str = "sample.composer-text";
-const VERSION: &str = "0.1.0";
 
 /// 候補の上限 / 最近使ったタグの保存上限。
 pub const MAX_CANDIDATES: usize = 8;
@@ -193,17 +193,14 @@ fn close_if_open() {
     });
 }
 
+/// `plugin.manifest` の答え = `manifest.json`(名前 / 版 / 説明 / 権限はあちらを直す)。
+fn manifest() -> Value {
+    rasq_plugin_kit::serde_json::from_str(include_str!("../manifest.json")).expect("manifest.json")
+}
+
 fn handle(fn_name: &str, args: Value) -> Result<Value, Value> {
     match fn_name {
-        "plugin.manifest" => Ok(manifest(
-            PLUGIN_ID,
-            "ハッシュタグ候補(サンプル)",
-            VERSION,
-            "action",
-            "# を打つと最近使ったタグと辞書から候補を出し、タップで本文に挿入",
-            &["composer.text"],
-            &["fow.widget", "storage.safe"],
-        )),
+        "plugin.manifest" => Ok(manifest()),
 
         "text.changed" => {
             let token = args["token"].as_str().unwrap_or("").to_string();
@@ -303,6 +300,16 @@ mod tests {
 
     fn utf16_len(s: &str) -> usize {
         s.encode_utf16().count()
+    }
+
+    /// `plugin.manifest` は `manifest.json` そのもの(`rasq check` の往復検査と同じ突き合わせ)。
+    #[test]
+    fn manifest_matches_manifest_json() {
+        let m = call_native("plugin.manifest", json!({})).unwrap();
+        let file: Value = rasq_plugin_kit::serde_json::from_str(include_str!("../manifest.json")).unwrap();
+        assert_eq!(m, file);
+        assert_eq!(m["slots"], json!(["composer.text"]));
+        assert_eq!(m["permissions"], json!(["fow.widget", "storage.safe"]));
     }
 
     #[test]
