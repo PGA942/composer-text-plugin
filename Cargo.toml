@@ -1,19 +1,9 @@
-[package]
-name = "composer-text-plugin"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-description = "コンポーザーで # を打つと出るハッシュタグ候補 FOW(最近使ったタグ + 辞書)"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-rasq-plugin-kit = { path = "kit" }
-serde_json = "1"
-
+# rasq CLI が rasq.toml から作り直すファイル(手で直しても rasq new で戻る)。
 [workspace]
-members = ["kit"]
+resolver = "2"
+members = [
+    "plugins/composer-text-plugin",
+]
 
 [profile.release]
 opt-level = "s"
