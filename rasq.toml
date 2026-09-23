@@ -8,3 +8,17 @@ namespace = "sample"
 name = "composer-text-plugin"
 slot = "composer.text"
 id = "sample.composer-text"
+
+# 権限の理由(rasq build が配布物の目次 root.safety に入れ、Central が掲載に反映する)。
+# 審査 (rasq-judge) は宣言した権限すべてに理由があるかを見る。無いと自動では承認されない。
+[listing.safety]
+external_hosts = []
+data_handling = "データは端末の中だけで扱い、外部には送信しません。"
+
+[[listing.safety.permissions]]
+permission = "fow.widget"
+reason = "# を打ったときにタグ候補の一覧を入力欄の上に出すため"
+
+[[listing.safety.permissions]]
+permission = "storage.safe"
+reason = "最近使ったハッシュタグを端末に保存して、候補の先頭に出すため"
