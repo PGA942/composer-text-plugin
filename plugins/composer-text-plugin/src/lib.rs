@@ -15,8 +15,11 @@
 //! `plugin.manifest` の答えは同じディレクトリの `manifest.json` そのもの(`include_str!`。
 //! `rasq check` の往復検査が常に一致する)。
 
-use rasq_plugin_kit::{fow_spec, host, rasq_plugin, rrl, serde_json::{json, Value}, unsupported, Surface};
+use rasq_plugin_kit::{fow_spec, host, i18n, rasq_plugin, rrl, serde_json::{json, Value}, unsupported, Surface};
 use std::sync::Mutex;
+
+mod text;
+use text::TEXT;
 
 /// 候補の上限 / 最近使ったタグの保存上限。
 pub const MAX_CANDIDATES: usize = 8;
@@ -159,25 +162,25 @@ pub fn push_recent(recent: &mut Vec<String>, tag: &str) {
 // RRL(FOW の中身)
 // ---------------------------------------------------------------------------
 
-fn panel_root(cands: &[String], recent: &[String], query: &str) -> Value {
+fn panel_root(loc: &str, cands: &[String], recent: &[String], query: &str) -> Value {
     let mut children: Vec<Value> = cands
         .iter()
         .enumerate()
         .map(|(i, tag)| {
-            let subtitle = if recent.iter().any(|r| r == tag) { "最近使ったタグ" } else { "辞書" };
+            let subtitle = if recent.iter().any(|r| r == tag) { TEXT.t(loc, "panel.recent") } else { TEXT.t(loc, "panel.dictionary") };
             rrl::list_tile(&format!("cand-{i}"), &format!("#{tag}"), Some(subtitle), Some(&format!("pick.{i}")))
         })
         .collect();
     if cands.is_empty() {
-        children.push(rrl::text("none", format!("「#{query}」に合う候補はありません")));
+        children.push(rrl::text("none", TEXT.f(loc, "panel.none", &[("query", query)])));
     }
-    children.push(rrl::styled_text("note", "タップで本文の # トークンを置き換えます", 11.0, false, Some("#888888")));
+    children.push(rrl::styled_text("note", TEXT.t(loc, "panel.note"), 11.0, false, Some("#888888")));
     rrl::scroll("root-scroll", false, vec![rrl::column("root", children)])
 }
 
 /// 本体ツリーは使わない(UI はコンポーザー横の FOW だけ)。
 fn root() -> Value {
-    rrl::column("root", vec![rrl::text("hello", "ハッシュタグ候補(UI はコンポーザーの FOW)")])
+    rrl::column("root", vec![rrl::text("hello", TEXT.t(&i18n::current(), "root.hello"))])
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +224,9 @@ fn handle(fn_name: &str, args: Value) -> Result<Value, Value> {
             }
             let recent = load_recent();
             let cands = candidates(&recent, &tr.query);
-            let root = panel_root(&cands, &recent, &tr.query);
-            let mut spec = fow_spec("ハッシュタグ候補", 0.35);
+            let loc = i18n::locale_of(&args);
+            let root = panel_root(loc, &cands, &recent, &tr.query);
+            let mut spec = fow_spec(TEXT.t(loc, "panel.title"), 0.35);
             spec["attachTop"] = json!(false);
             let opened = PANEL.open(spec, root, Some("suggestClosed"), json!({}));
             with_state(|s| {
@@ -248,7 +252,7 @@ fn handle(fn_name: &str, args: Value) -> Result<Value, Value> {
             push_recent(&mut recent, &tag);
             host::storage_set("recent", json!(recent));
             close_if_open();
-            host::toast(&format!("#{tag} を挿入しました"));
+            host::toast(&TEXT.f(i18n::locale_of(&args), "toast.inserted", &[("tag", &tag)]));
             Ok(json!({}))
         }
 
@@ -435,6 +439,38 @@ mod tests {
         let open = log.iter().find(|(f, _)| f == "fow.open").unwrap();
         assert_eq!(open.1["root"]["c"][0]["c"][0]["p"]["title"], "#打上会");
         assert_eq!(open.1["root"]["c"][0]["c"][0]["p"]["subtitle"], "最近使ったタグ");
+    }
+
+    /// `args.locale` の言語で FOW の文とトーストを出す(無い言語は ja)。
+    #[test]
+    fn texts_follow_locale() {
+        let (_g, _store) = setup(vec!["写真"]);
+        let _ = i18n::take_misses();
+        call_native("text.changed", json!({"token": "tk1", "text": "#", "selectionStart": 1, "selectionEnd": 1, "locale": "en"})).unwrap();
+        let log = take_host_log();
+        let open = log.iter().find(|(f, _)| f == "fow.open").unwrap();
+        assert_eq!(open.1["spec"]["title"], "Hashtag suggestions");
+        assert_eq!(open.1["root"]["c"][0]["c"][0]["p"]["subtitle"], "Recently used");
+        assert_eq!(open.1["root"]["c"][0]["c"][1]["p"]["subtitle"], "Dictionary");
+        call_native("pick.0", json!({"locale": "zh-Hant-TW"})).unwrap();
+        let toast = take_host_log().into_iter().find(|(f, _)| f == "toast").unwrap();
+        assert_eq!(toast.1["message"], "已插入 #写真");
+
+        call_native("text.changed", json!({"token": "tk2", "text": "#zzz", "selectionStart": 4, "selectionEnd": 4, "locale": "ko"})).unwrap();
+        let log = take_host_log();
+        let open = log.iter().find(|(f, _)| f == "fow.open").unwrap();
+        assert_eq!(open.1["spec"]["title"], "해시태그 추천");
+        let none = open.1["root"]["c"][0]["c"].as_array().unwrap().iter().find(|n| n["k"] == "none").unwrap().clone();
+        assert_eq!(none["p"]["text"], "'#zzz'에 해당하는 추천이 없습니다");
+
+        call_native("text.changed", json!({"token": "tk3", "text": "#", "selectionStart": 1, "selectionEnd": 1, "locale": "zh-Hans"})).unwrap();
+        let open = take_host_log().into_iter().find(|(f, _)| f == "fow.open").unwrap();
+        assert_eq!(open.1["spec"]["title"], "话题标签建议");
+        // 知らない言語は ja
+        call_native("text.changed", json!({"token": "tk4", "text": "#", "selectionStart": 1, "selectionEnd": 1, "locale": "fr"})).unwrap();
+        let open = take_host_log().into_iter().find(|(f, _)| f == "fow.open").unwrap();
+        assert_eq!(open.1["spec"]["title"], "ハッシュタグ候補");
+        assert!(i18n::take_misses().is_empty());
     }
 
     #[test]
